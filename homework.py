@@ -94,6 +94,7 @@ def check_tokens():
 def main():
     """Основная логика работы бота."""
     homework_status = 'Unknown'
+    last_error = None
     if check_tokens() is False:
         pass
     else:
@@ -120,9 +121,10 @@ def main():
                         raise Exception('С указанного момента времени'
                                         ' не было сданных домашних заданий')
                 except Exception as error:
-                    message = f'Сбой в работе программы: {error}'
-                    print(message)
-                    bot.send_message(message)
+                    if error != last_error:
+                        message = f'Сбой в работе программы: {error}'
+                        print(message)
+                        bot.send_message(message)
                     time.sleep(RETRY_TIME)
                 else:
                     time.sleep(RETRY_TIME)
