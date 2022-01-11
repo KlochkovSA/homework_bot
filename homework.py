@@ -125,6 +125,7 @@ def main():
                         message = f'Сбой в работе программы: {error}'
                         print(message)
                         bot.send_message(message)
+                        last_error = error
                     time.sleep(RETRY_TIME)
                 else:
                     time.sleep(RETRY_TIME)
