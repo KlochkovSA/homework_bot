@@ -49,8 +49,11 @@ def get_api_answer(current_timestamp):
     params = {'from_date': current_timestamp}
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    except Exception as error:
-        logger.error(error)
+    except requests.exceptions.ConnectTimeout as error:
+        logger.error(f'Превышено время ожидания ответа сервера {error}')
+        raise error
+    except requests.exceptions.RequestException as error:
+        logger.error(f'Произошла ошибка соединения {error}')
         raise error
     if response.status_code != HTTPStatus.OK:
         logger.error(f'Сбой в работе программы: Эндпоинт {ENDPOINT} '
@@ -86,11 +89,10 @@ def parse_status(homework):
     homework_status = homework.get('status')
     if homework_name is None:
         raise KeyError('Ошибка в данных: homework_name is None')
-    if homework_status in VERDICTS.keys():
-        verdict = VERDICTS[homework_status]
-        return f'Изменился статус проверки работы "{homework_name}". {verdict}'
-    else:
+    if homework_status not in VERDICTS.keys():
         raise KeyError('Неожиданный статус домашней работы')
+    verdict = VERDICTS[homework_status]
+    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def check_tokens():
@@ -110,38 +112,37 @@ def main():
     last_error = None
     if check_tokens() is False:
         return
-    else:
+    try:
+        bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    except telegram.error.TelegramError as error:
+        logger.critical(f'Произошла ошибка при создании бота: {error} '
+                        'программа остановлена')
+        return
+    while True:
         try:
-            bot = telegram.Bot(token=TELEGRAM_TOKEN)
-        except telegram.error.TelegramError as error:
-            logger.critical(f'Произошла ошибка при создании бота: {error} '
-                            'программа остановлена')
-            return
-        while True:
-            try:
-                response = get_api_answer(PRACTICUM_BIRTHDAY)
-                homeworks = check_response(response)
-                if homeworks:
-                    last_homework = homeworks[0]
-                    status = parse_status(last_homework)
-                    if homework_status != status:
-                        homework_status = status
-                        send_message(bot, status)
-                    else:
-                        logger.info('Статус проверки задания'
-                                    ' не обновился')
+            response = get_api_answer(PRACTICUM_BIRTHDAY)
+            homeworks = check_response(response)
+            if homeworks:
+                last_homework = homeworks[0]
+                status = parse_status(last_homework)
+                if homework_status != status:
+                    homework_status = status
+                    send_message(bot, status)
                 else:
-                    raise Exception('С указанного момента времени'
-                                    ' не было сданных домашних заданий')
-            except Exception as error:
-                if error != last_error:
-                    message = f'Сбой в работе программы: {error}'
-                    logger.error(message)
-                    send_message(bot, message)
-                    last_error = error
-                time.sleep(RETRY_TIME)
+                    logger.info('Статус проверки задания'
+                                ' не обновился')
             else:
-                time.sleep(RETRY_TIME)
+                raise Exception('С указанного момента времени'
+                                ' не было сданных домашних заданий')
+        except Exception as error:
+            if error != last_error:
+                message = f'Сбой в работе программы: {error}'
+                logger.error(message)
+                send_message(bot, message)
+                last_error = error
+            time.sleep(RETRY_TIME)
+        else:
+            time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
